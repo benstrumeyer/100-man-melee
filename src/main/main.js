@@ -25,7 +25,7 @@ import {tssControls, drawTSS, drawTSSInit, getTargetStageCookies} from "../stage
 import {targetBuilder, targetBuilderControls, renderTargetBuilder, showingCode} from "target/targetbuilder";
 import {destroyArticles, executeArticles, articlesHitDetection, executeArticleHits, renderArticles, resetAArticles} from "physics/article";
 import {runAI} from "main/ai";
-import {physics} from "physics/physics";
+import {physics, resizeEcbSquashData} from "physics/physics";
 import $ from 'jquery';
 import {toggleTransparency,getTransparency} from "main/vfx/transparency";
 import {drawVfx} from "main/vfx/drawVfx";
@@ -38,13 +38,16 @@ import {Box2D} from "./util/Box2D";
 import {Vec2D} from "./util/Vec2D";
 import {updateNetworkInputs, retrieveNetworkInputs, giveInputs, connectToMPServer, syncGameMode} from "./multiplayer/streamclient";
 import {saveGameState, loadReplay, gameTickDelay} from "./replay";
-import {keyboardMap, showButton, nullInputs, pollInputs, inputData, setCustomCenters, nullInput} from "../input/input";
+import {keyboardMap, showButton, nullInputs, pollInputs, inputData, setCustomCenters, nullInput, resizeAiInputBank} from "../input/input";
 import {deaden} from "../input/meleeInputs";
 import {getGamepadNameAndInfo} from "../input/gamepad/findGamepadInfo";
 import {customGamepadInfo} from "../input/gamepad/gamepads/custom";
 import {buttonState} from "../input/gamepad/retrieveGamepadInputs";
 import {updateGamepadSVGState, updateGamepadSVGColour, setGamepadSVGColour, cycleGamepadColour} from "../input/gamepad/drawGamepad";
 import {deepObjectMerge} from "./util/deepCopyObject";
+import {buildMatchConfig, defaultRoster} from "./hundredManSetup";
+import {resolveFFA} from "./ffaRules";
+import {computeCamera, smoothCamera} from "./camera";
 import {setTokenPosSnapToChar} from "../menus/css";
 /*globals performance*/
 
@@ -138,6 +141,14 @@ export let gameMode = 20;
 // 0:Title Screen
 export let versusMode = 0;
 
+// True only during a 100-man FFA match. Disables the versus-mode stock
+// re-inflation (so stocks deplete to 0 and fighters stay eliminated) and
+// enables the dynamic camera + FFA last-man-standing end condition.
+export let hundredManMode = false;
+export function setHundredManMode (val){
+  hundredManMode = val;
+}
+
 export const randomTags = ["NEO!","SELF","NOVA","PNDA","Panda","LFFN","Scorp","AZ","AXE","Tempo","TMPO","[A]rmada","WBALLZ","Westballz","PPMD","Kreygasm","M2K","Mang0","USA","SCAR","TOPH","(.Y.)","HBOX","HungryBox","PLUP","Shroomed","SFAT","Wizz","Lucky","S2J","SilentWolf","aMSa","S2J","Hax$"];
 
 export const palettes = [["rgb(250, 89, 89)","rgb(255, 170, 170)","rgba(255, 206, 111, ","rgb(244, 68, 68)","rgba(255, 225, 167, "],
@@ -187,6 +198,43 @@ export var stageSelect = 0;
 
 export function setStageSelect (val){
   stageSelect = val;
+}
+
+// Overwrite the parallel match arrays with an N-fighter config (see
+// hundredManSetup.js) and size `ports` to match, removing the 4-player cap.
+export function applyMatchConfig (cfg){
+  characterSelections.length = 0; characterSelections.push(...cfg.characterSelections);
+  startingPoint.length = 0;       startingPoint.push(...cfg.startingPoint);
+  startingFace.length = 0;        startingFace.push(...cfg.startingFace);
+  playerType.length = 0;          playerType.push(...cfg.playerType);
+  cpuDifficulty.length = 0;       cpuDifficulty.push(...cfg.cpuDifficulty);
+  ports = cfg.playerType.length;
+  // Per-fighter color palette index, cycled over the 7 available palettes so
+  // every spawned fighter (not just the first 4) has a valid palettes[pPal[i]].
+  pPal.length = 0;
+  for (let i = 0; i < ports; i++) pPal.push(i % palettes.length);
+  resizeEcbSquashData(ports);
+  resizeAiInputBank(ports);
+  // Per-fighter pause / frame-advance edge-state pairs, indexed in interpretInputs
+  // for every fighter; extend beyond the original 4 with neutral defaults.
+  for (let i = pause.length; i < ports; i++) pause.push([true, true]);
+  for (let i = frameAdvance.length; i < ports; i++) frameAdvance.push([true, true]);
+  versusMode = 1;
+}
+
+// Spawn an N-fighter FFA: port 0 human + (count-1) CPUs on the given stage.
+export function startHundredManMatch (count = 100, stage = 4 /* Final Destination */){
+  const cfg = buildMatchConfig(count, defaultRoster, [-120, 0], [120, 0]);
+  applyMatchConfig(cfg);
+  hundredManMode = true;
+  window.__cam = null; // reset camera so it snaps to the opening swarm
+  setStageSelect(stage);
+  startGame();
+}
+
+// Temporary dev trigger: call startHundredManMatch(N) from the browser console.
+if (typeof window !== "undefined") {
+  window.startHundredManMatch = startHundredManMatch;
 }
 
 export const blastzone = new Box2D([-224,200],[224,-108.8]);
@@ -909,7 +957,8 @@ export function gameTick (oldInputBuffers){
   var start = performance.now();
   var diff = 0;
 
-  let input = [nullInputs(), nullInputs(), nullInputs(), nullInputs()];
+  let input = [];
+  for (let p = 0; p < Math.max(ports, 4); p++) input.push(nullInputs());
 
   if (gameMode == 0 || gameMode == 20) {
     findPlayers();
@@ -1052,7 +1101,7 @@ export function gameTick (oldInputBuffers){
     destroyArticles();
     executeArticles();
 
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < ports; i++) {
       if (playerType[i] > -1) {
         if(!starting) {
           input[i] = interpretInputs(i, true,playerType[i],oldInputBuffers[i]);
@@ -1061,9 +1110,9 @@ export function gameTick (oldInputBuffers){
       }
     }
     checkPhantoms();
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < ports; i++) {
       if (playerType[i] > -1) {
-        hitDetect(i,input); 
+        hitDetect(i,input);
       }
     }
     executeHits(input);
@@ -1075,6 +1124,30 @@ export function gameTick (oldInputBuffers){
       startTimer -= 0.01666667;
       if (startTimer < 0) {
         starting = false;
+      }
+    }
+    if (hundredManMode && !starting) {
+      // FFA resolution: mark out-of-stock fighters eliminated (the existing
+      // stock mechanism already routes them to SLEEP), and end the match when
+      // one survivor remains.
+      const ffa = resolveFFA(player.slice(0, ports).map(p => ({ stocks: p.stocks, alive: !p.dead })));
+      ffa.newlyEliminated.forEach(idx => { player[idx].dead = true; }); // render skips dead fighters
+      if (ffa.over) {
+        if (ffa.winner !== null) console.log("100-man winner: port " + ffa.winner);
+        hundredManMode = false;
+        window.__cam = null;
+        endGame(input);
+      }
+    }
+    if (hundredManMode) {
+      // Dynamic-zoom camera framing the living swarm. Screen dims match the
+      // renderer's 1200x750 design space (not 1920x1080) so framing lines up
+      // with activeStage.scale/offset; maxScale caps at the stage default 4.5.
+      const livePos = [];
+      for (let i = 0; i < ports; i++) if (!player[i].dead) livePos.push(player[i].phys.pos);
+      if (livePos.length > 0) {
+        const target = computeCamera(livePos, { screenW: 1200, screenH: 750, margin: 1.3, minScale: 1, maxScale: 4.5 });
+        window.__cam = smoothCamera(window.__cam || target, target, 0.15);
       }
     }
     if (frameByFrame) {
@@ -1104,7 +1177,7 @@ export function gameTick (oldInputBuffers){
     findPlayers();
   } else {
     if (!gameEnd) {
-      for (var i = 0; i < 4; i++) {
+      for (var i = 0; i < ports; i++) {
         if (playerType[i] == 0 ||playerType[i] == 2) {
           if (currentPlayers[i] != -1) {
             input[i] = interpretInputs(i, false,playerType[i],oldInputBuffers[i]);
@@ -1237,7 +1310,7 @@ export function renderTick (){
         drawBackground();
       }
       drawStage();
-      for (var i = 0; i < 4; i++) {
+      for (var i = 0; i < ports; i++) {
         if (playerType[i] > -1) {
           renderPlayer(i);
         }
@@ -1305,19 +1378,33 @@ export function initializePlayers (i,target){
 
 export function startGame (){
   setVsStage(stageSelect);
+  // The chosen stage only defines spawn/respawn slots for 4 players; cycle them
+  // so an N-fighter match has a valid respawn point/face for every fighter index.
+  const stg = getActiveStage();
+  if (stg.respawnPoints && stg.respawnPoints.length > 0) {
+    const baseRP = stg.respawnPoints.length;
+    const baseRF = stg.respawnFace.length;
+    for (let i = baseRP; i < ports; i++) stg.respawnPoints.push(stg.respawnPoints[i % baseRP]);
+    for (let i = baseRF; i < ports; i++) stg.respawnFace.push(stg.respawnFace[i % baseRF]);
+  }
   setBackgroundType(Math.round(Math.random()));
   if (holiday == 1){
     createSnow();
   }
   changeGamemode(3);
   resetVfxQueue();
-  for (var n = 0; n < 4; n++) {
+  for (var n = 0; n < ports; n++) {
     if (playerType[n] > -1) {
       initializePlayers(n, false);
       renderPlayer(n);
       player[n].inCSS = false;
     }
-    if (versusMode) {
+    if (hundredManMode) {
+      // FFA: a single life each, but stocks are allowed to deplete to 0
+      // (the versus clamp in physics is skipped) so fighters stay eliminated.
+      player[n].stocks = 1;
+      player[n].dead = false;
+    } else if (versusMode) {
       player[n].stocks = 1;
     }
   }

@@ -7,6 +7,7 @@ import {
   playerType,
   edgeOffset,
   versusMode,
+  hundredManMode,
   showDebug,
   gameMode
 } from "../main/main";
@@ -745,6 +746,14 @@ const ecbSquashData: [ SquashDatum
   , nullSquashDatum
   , nullSquashDatum];
 
+// Ensure ecbSquashData has a (neutral) entry for every fighter index, so
+// N-fighter matches don't read `.factor` off an undefined slot.
+export function resizeEcbSquashData(count) {
+  for (let i = ecbSquashData.length; i < count; i++) {
+    ecbSquashData[i] = nullSquashDatum;
+  }
+}
+
 
 function findAndResolveCollisions(i: number, input: any
     , oldBackward: bool
@@ -977,7 +986,7 @@ function dealWithDeath(i: number, input: any): void {
       player[i].stocks--;
       player[i].colourOverlayBool = false;
       lostStockQueue.push([i, player[i].stocks, 0]);
-      if (player[i].stocks === 0 && versusMode) {
+      if (player[i].stocks === 0 && versusMode && !hundredManMode) {
         player[i].stocks = 1;
       }
       actionStates[characterSelections[i]][state].init(i, input);
