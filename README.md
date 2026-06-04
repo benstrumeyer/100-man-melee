@@ -1,116 +1,47 @@
-# meleelight
-Melee Light Platform Fighter
+# 100-Man Melee
 
-![Starting Scene](https://raw.githubusercontent.com/amilajack/meleelight/master/screenshots/starting.png)
-![Gameplay Scene](https://raw.githubusercontent.com/amilajack/meleelight/master/screenshots/scene.png)
+A **free-for-all, last-fighter-standing brawl for ~100 fighters in one arena** — a browser-based platform fighter built in JavaScript, no plugins.
 
-Play Stable Build: http://ikneedata.com/meleelight
+Spawn a horde of CPUs (and yourself) into a wide multi-tier arena and fight until one remains. Runs at 60 fps on a capable machine.
 
-Join the discussion on Discord: https://discord.gg/qagFayt
+> **Built on [MeleeLight](https://github.com/schmooblidon/meleelight)** by Will Blackett (schmooblidon) — an open-source recreation of Super Smash Bros. Melee's movement and physics. This project extends that engine from its original 4-player cap to a ~100-fighter free-for-all. MeleeLight is MIT licensed; this project keeps that license (see [`LICENSE`](./LICENSE)) and is itself MIT.
 
-Smashboards Thread: https://smashboards.com/threads/melee-light-browser-based-melee-clone-play-the-beta.439646/
+## Play it locally
 
+Requires Node 18+.
 
-## Table of Contents
-1. [Getting Started](#getting-started)
-2. [Development](#development)
-  1. [Setup](#setup)
-  2. [Commands](#commands)
-  3. [Project layout](#project-layout)
-3. [FAQ](#faq)
-
-
-
-## Development
-
-Melee Light is a javascript based project, that renders the game to canvas.
-There's no Flash, Unity, or some other game engine here, just web technologies.
-The project is assembled using Webpack, run through Babel for ES6 features, and
-linted by ESLint.
-
-### Setup
-
-First make sure you have node and npm installed. You should have at least node
-6.X.X. Run `node -v` to check this.
-
-Then install the modules by running `npm install`, or alternatively using
-`yarn init`. This project was built with [yarn](https://yarnpkg.com/), so that's
-recommended, but either works.
-
-Run the compile animations command (See below) first, before trying to run it.
-This only needs to happen once, or if you change the animations at all. This was
-split out for performance reasons, as it's the largest part of the codebase.
-
-Now you're all set! See the commands below for how to build the project.
-
-### Commands
-
-All commands are run like `npm run <name>` from the root of the project.
-
-|Name         |Description                                                     |
-|-------------|----------------------------------------------------------------|
-|`dev`        |Run webpack and build the dev version, watches for changes      |
-|`build`      |Run webpack once and build the optimized production version     |
-|`animations` |This compiles the animations, run once before playing           |
-|`serve`      |Lets you play it locally at by default localhost:3000           |
-
-### Project Layout
-
-```
-├── bin                      # All scripts that are run offline by devs
-│   └── webpack              # Webpack-specific scripts
-├── dist                     # Where the compiled code goes to be played
-└── src                      # Application source code
-    ├── index.js             # The entry point for the application. A lean file that loads additional code
-    ├── main.js              # The main entry point for the application. Contains most everything else
-    ├── main                 # Files core to the project
-    ├── characters           # Character code, including attributes and moves
-    │   └── shared           # Shared code between characters
-    ├── menus                # Main menu, settings, character select, stage select etc
-    ├── physics              # Utilities that relate to the in-game physics
-    ├── stages               # Code to draw the stages that ship with the project
-    └── target               # Things related to building and playing the break the targets game mode
+```bash
+npm install
+npm run dev          # Vite dev server, prints a localhost URL
 ```
 
+Open the URL, wait for the title screen, then in the browser console (F12):
 
+```js
+startHundredManMatch(40)   // N fighters: you (port 0) + (N-1) CPUs. 40 is smooth; 100 is heavier.
+```
 
-## FAQ
+You play port 0 on a GameCube controller (via adapter) or keyboard; the rest are CPUs. Last fighter standing wins.
 
-### Will Online ever be available?
-Most likely sometime in the future.
+## What's here (Phase 1 — local)
 
-### How many characters will there be?
-First priority right now is Top 8, excluding ICs. But there's no reason that
-all of the characters can't make it in.
+- **N-fighter engine** — the original 4-player cap removed throughout (game loop, rendering, AI, per-fighter state).
+- **FFA last-man-standing** with real eliminations.
+- **Wide multi-tier arena** — a big flat platform plus Battlefield-height pass-through platforms.
+- **Broad-phase collision** (spatial hash) + fps/sim instrumentation; the sim stays ~3 ms/tick at 100 fighters.
+- **Fixed full-arena camera** framing the whole stage.
 
-### How can I get my controller to work?
-Ask Schmoo or WwwWario on Discord and they will try their best to help you.
+## Roadmap (Phase 2 — online)
 
-### Why doesn't the official adapter work on Chrome?
-Because Chrome has a bug with the vJoy drivers, it is beyond our control.
+The local simulation is designed to become an **authoritative server** so ~100 *humans* can play in one arena: clients send inputs, the server runs the one true sim and broadcasts state, with client-side prediction. Real Melee netplay caps at 4 players — an open JS engine is the way around that.
 
-### Why does my screen get stuck on the loading screen in the downloaded game?
-If you downloaded the game, you need to run index.html (meleelightdebug.html
-on older downloads), if it still doesn't load, join Discord and we'll try
-to help. It helps if you can post any console output.
+## Tech
 
-### You can go through the walls on Target Test Stages! Do you guys know about this?
-This is a known issue.
+JavaScript · Vite · Vitest · HTML5 Canvas. Migrated from the original Webpack 1 / Babel 6 toolchain.
 
-### The game doesn't load or crashes!
-The game is still in active development. If you want to help, you can open a
-github issue or post in Discord. Please provide console output, if there is any.
+## Credits & license
 
-### How does Melee Light compare to Melee?
-The Devs are trying their best to replicate Vanilla Melee, but some differences
-may arise.
+- Engine base: **[MeleeLight](https://github.com/schmooblidon/meleelight)** — © Will Blackett, MIT.
+- 100-man fork & extensions: this repository, MIT.
 
-### Who made this project?
-The head Developers are Schmoo, Tatatat0, and Bites.
-
-### I found a bug, is there a way to report it?
-Join the Discord and there's a text channel you can report bugs in. There's also
-Custom Stage sharing, idea sharing, and much more.
-
-### I want to help out
-Join the discord and ping the team. Help is always welcome.
+MIT — see [`LICENSE`](./LICENSE).
